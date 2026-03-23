@@ -1,20 +1,15 @@
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
 const Conversation = require("../models/Conversation");
-const { computeScore } = require("../utils/compatibility");
 const { connectedUsers, waitingQueue, activeSessions, sessionLikes } = require("./state");
 
 /*
-FLUX DÉCOUVERTE — Comment ça fonctionne :
+FLUX DÉCOUVERTE — Matching FIFO (style Omegle) :
 
-1. User A ouvre l'onglet Découverte → émet queue:join
-   → Si personne en attente : reçoit queue:waiting → spinner "Recherche..."
+1. User A ouvre Découverte → queue:join → personne en attente → queue:waiting
 
-2. User B ouvre l'onglet Découverte → émet queue:join
-   → Le backend détecte que A attend → crée une session
-   → Envoie match:found aux DEUX avec { partnerId, sessionId, isCaller }
-   → A reçoit isCaller: true (il crée l'offer WebRTC)
-   → B reçoit isCaller: false (il attend l'offer)
+2. User B ouvre Découverte → queue:join → A attend → match immédiat (FIFO)
+   → match:found aux DEUX, pas de filtre hobbies/âge/ville
+   → A crée l'offer WebRTC (isCaller: true), B attend
 
 3. Connexion vidéo :
    → A crée l'offer SDP → l'envoie via rtc:offer au backend
@@ -80,7 +75,8 @@ module.exports = function initSockets(io) {
 
     const currentUserId = socket.userId ? String(socket.userId) : null;
 
-    // Omegle/OmeTV-like queue avec matching par compatibilité
+    // Queue FIFO : dès qu'une personne attend, le prochain qui rejoint matche immédiatement.
+    // Pas de filtrage par hobbies/âge/ville — style Omegle, connexion instantanée.
     socket.on("queue:join", async () => {
       if (!currentUserId) return;
 
@@ -97,96 +93,56 @@ module.exports = function initSockets(io) {
       const idx = waitingQueue.findIndex((u) => u.userId === currentUserId);
       if (idx !== -1) waitingQueue.splice(idx, 1);
 
-      let userData;
-      try {
-        userData = await User.findById(currentUserId)
-          .select("name age city hobbies language")
-          .lean();
-      } catch (err) {
-        console.error(`[Queue] Erreur chargement profil userId=${currentUserId}:`, err);
-        socket.emit("queue:waiting");
-        return;
-      }
-
-      userData = userData || {};
-
       if (waitingQueue.length === 0) {
-        waitingQueue.push({ userId: currentUserId, socketId: socket.id, userData });
+        waitingQueue.push({ userId: currentUserId, socketId: socket.id });
         socket.emit("queue:waiting");
         console.log(`[Queue] join: userId=${currentUserId}, queue size=1, attente`);
         return;
       }
 
-      // Trouver le meilleur match dans la queue
-      let bestMatch = null;
-      let bestScore = -1;
+      // Premier en attente = match immédiat (FIFO)
+      const partner = waitingQueue.shift();
 
-      for (const candidate of waitingQueue) {
-        const score = computeScore(userData, candidate.userData || {});
-        console.log(`[Compat] ${currentUserId} ↔ ${candidate.userId} score=${score}%`);
-        if (score > bestScore) {
-          bestScore = score;
-          bestMatch = candidate;
+      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 13)}`;
+      activeSessions.set(sessionId, {
+        user1Id: partner.userId,
+        user2Id: currentUserId,
+      });
+
+      console.log(`[Queue] match:found (FIFO) -> ${partner.userId} ↔ ${currentUserId}`);
+
+      setTimeout(() => {
+        const socket1 = connectedUsers.get(partner.userId);
+        const socket2 = connectedUsers.get(currentUserId);
+
+        if (!socket1 || !socket2) {
+          activeSessions.delete(sessionId);
+          if (socket1) waitingQueue.unshift(partner);
+          if (socket2) waitingQueue.push({ userId: currentUserId, socketId: socket.id });
+          return;
         }
-      }
 
-      const MIN_SCORE = 30;
-
-      if (bestScore >= MIN_SCORE) {
-        const matchIdx = waitingQueue.findIndex((u) => u.userId === bestMatch.userId);
-        waitingQueue.splice(matchIdx, 1);
-
-        const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 13)}`;
         activeSessions.set(sessionId, {
-          user1Id: bestMatch.userId,
+          user1Id: partner.userId,
           user2Id: currentUserId,
-          score: bestScore,
+          user1SocketId: socket1,
+          user2SocketId: socket2,
+          startedAt: new Date(),
         });
 
-        console.log(
-          `[Queue] match:found score=${bestScore}% -> ${bestMatch.userId} ↔ ${currentUserId}`,
-        );
-
-        setTimeout(() => {
-          const socket1 = connectedUsers.get(bestMatch.userId);
-          const socket2 = connectedUsers.get(currentUserId);
-
-          if (!socket1 || !socket2) {
-            activeSessions.delete(sessionId);
-            if (socket1) waitingQueue.push(bestMatch);
-            if (socket2) waitingQueue.push({ userId: currentUserId, socketId: socket.id, userData });
-            return;
-          }
-
-          activeSessions.set(sessionId, {
-            user1Id: bestMatch.userId,
-            user2Id: currentUserId,
-            user1SocketId: socket1,
-            user2SocketId: socket2,
-            score: bestScore,
-            startedAt: new Date(),
-          });
-
-          io.to(socket1).emit("match:found", {
-            partnerId: currentUserId,
-            sessionId,
-            isCaller: true,
-            compatibilityScore: bestScore,
-          });
-          io.to(socket2).emit("match:found", {
-            partnerId: bestMatch.userId,
-            sessionId,
-            isCaller: false,
-            compatibilityScore: bestScore,
-          });
-        }, 500);
-      } else {
-        console.log(
-          `[Queue] Meilleur score disponible=${bestScore}% < ${MIN_SCORE}%, mise en attente`,
-        );
-        waitingQueue.push({ userId: currentUserId, socketId: socket.id, userData });
-        socket.emit("queue:waiting");
-      }
+        io.to(socket1).emit("match:found", {
+          partnerId: currentUserId,
+          sessionId,
+          isCaller: true,
+          compatibilityScore: 0,
+        });
+        io.to(socket2).emit("match:found", {
+          partnerId: partner.userId,
+          sessionId,
+          isCaller: false,
+          compatibilityScore: 0,
+        });
+      }, 500);
     });
 
     socket.on("queue:leave", () => {
