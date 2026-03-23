@@ -79,6 +79,11 @@ async function start() {
   app.use(`${BASE_PATH}/api/profile`, profileRouter);
   app.use(`${BASE_PATH}/api/report`, reportRouter);
 
+  // Test debug : si cette route répond, le proxy envoie bien vers notre app
+  app.get(`${BASE_PATH}/socket.io`, (req, res) => {
+    res.type("text/plain").send("EXPRESS_RECEIVED_SOCKET_IO_PATH");
+  });
+
   // Server HTTP + Socket.io
   const server = http.createServer(app);
   const io = new Server(server, {
