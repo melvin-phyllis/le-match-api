@@ -99,6 +99,13 @@ async function start() {
   const socketEmitter = initSockets(io);
   app.set("socketEmitter", socketEmitter);
 
+  // Logger brut pour voir si les requêtes Socket.io atteignent le serveur
+  server.on("request", (req) => {
+    if (req.url?.includes("socket.io")) {
+      logger.info(`[RAW] Socket.io request: ${req.method} ${req.url}`);
+    }
+  });
+
   app.use(errorHandler);
 
   const port = process.env.PORT || 3000;
