@@ -1,6 +1,7 @@
 const path = require("path");
 const http = require("http");
 const express = require("express");
+const logger = require("./utils/logger");
 const helmet = require("helmet");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -49,7 +50,7 @@ async function start() {
   try {
     await seedAdmin();
   } catch (err) {
-    console.warn("[Seed] Erreur création admin:", err?.message);
+    logger.warn("[Seed] Erreur création admin:", err?.message);
   }
 
   const app = express();
@@ -63,7 +64,7 @@ async function start() {
   app.use((req, res, next) => {
     const start = Date.now();
     res.on("finish", () => {
-      console.log(
+      logger.info(
         `[HTTP] ${req.method} ${req.originalUrl} → ${res.statusCode} (${Date.now() - start}ms)`
       );
     });
@@ -95,7 +96,7 @@ async function start() {
 
   const port = process.env.PORT || 3000;
   server.listen(port, () => {
-    console.log(`Serveur prêt sur le port ${port}`);
+    logger.info(`Serveur prêt sur le port ${port} | Logs: logs/app.log (ou LOG_FILE dans .env)`);
   });
 }
 
@@ -112,6 +113,10 @@ start().catch((err) => {
   } else {
     console.error("Startup backend échoué:", err?.message || err);
   }
+  try {
+    const logger = require("./utils/logger");
+    logger.error("Startup échoué:", err?.message || err);
+  } catch (_) {}
   process.exit(1);
 });
 
