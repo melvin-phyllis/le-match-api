@@ -208,10 +208,10 @@ module.exports = function initSockets(io) {
       activeSessions.delete(sid);
 
       const partnerId = session.user1Id === currentUserId ? session.user2Id : session.user1Id;
-      const partnerSocketId =
-        session.user1SocketId != null && session.user2SocketId != null
-          ? (session.user1Id === partnerId ? session.user1SocketId : session.user2SocketId)
-          : connectedUsers.get(partnerId);
+      let partnerSocketId = connectedUsers.get(partnerId);
+      if (!partnerSocketId && session.user1SocketId != null && session.user2SocketId != null) {
+        partnerSocketId = session.user1Id === partnerId ? session.user1SocketId : session.user2SocketId;
+      }
 
       if (partnerSocketId) {
         io.to(partnerSocketId).emit("match:ended", { sessionId: sid });
@@ -234,10 +234,10 @@ module.exports = function initSockets(io) {
       likes.add(currentUserId);
 
       const partnerId = session.user1Id === currentUserId ? session.user2Id : session.user1Id;
-      const partnerSocketId =
-        session.user1SocketId != null && session.user2SocketId != null
-          ? (session.user1Id === partnerId ? session.user1SocketId : session.user2SocketId)
-          : connectedUsers.get(partnerId);
+      let partnerSocketId = connectedUsers.get(partnerId);
+      if (!partnerSocketId && session.user1SocketId != null && session.user2SocketId != null) {
+        partnerSocketId = session.user1Id === partnerId ? session.user1SocketId : session.user2SocketId;
+      }
 
       if (likes.size >= 2) {
         sessionLikes.delete(sid);
@@ -276,10 +276,10 @@ module.exports = function initSockets(io) {
 
             const partnerId =
               session.user1Id === disconnectedUserId ? session.user2Id : session.user1Id;
-            const partnerSocketId =
-              session.user1SocketId != null && session.user2SocketId != null
-                ? (session.user1Id === partnerId ? session.user1SocketId : session.user2SocketId)
-                : connectedUsers.get(partnerId);
+            let partnerSocketId = connectedUsers.get(partnerId);
+            if (!partnerSocketId && session.user1SocketId != null && session.user2SocketId != null) {
+              partnerSocketId = session.user1Id === partnerId ? session.user1SocketId : session.user2SocketId;
+            }
 
             if (partnerSocketId) {
               io.to(partnerSocketId).emit("match:ended", { sessionId: sid });
