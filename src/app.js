@@ -84,8 +84,15 @@ async function start() {
   const io = new Server(server, {
     path: BASE_PATH ? `${BASE_PATH}/socket.io` : "/socket.io",
     cors: {
-      origin: allowedOrigins.length ? allowedOrigins : "*",
+      origin: (origin, callback) => {
+        // Apps mobiles : pas d'Origin ou Origin: null → autoriser
+        if (!origin || origin === "null") return callback(null, true);
+        if (allowedOrigins.length === 0) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        callback(new Error("CORS non autorisé"));
+      },
       credentials: true,
+      methods: ["GET", "POST"],
     },
   });
 
@@ -95,8 +102,9 @@ async function start() {
   app.use(errorHandler);
 
   const port = process.env.PORT || 3000;
+  const socketPath = BASE_PATH ? `${BASE_PATH}/socket.io` : "/socket.io";
   server.listen(port, () => {
-    logger.info(`Serveur prêt sur le port ${port} | Logs: logs/app.log (ou LOG_FILE dans .env)`);
+    logger.info(`Serveur prêt sur le port ${port} | Socket.io: ${socketPath} | Logs: logs/app.log`);
   });
 }
 
