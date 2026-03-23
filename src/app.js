@@ -8,6 +8,8 @@ const { Server } = require("socket.io");
 
 require("dotenv").config();
 
+const BASE_PATH = process.env.BASE_PATH || "";
+
 // Init Firebase + MongoDB (même si .env manquant: app démarre mais certaines routes échoueront)
 const connectDB = require("./config/db");
 const seedAdmin = require("./config/seedAdmin");
@@ -55,7 +57,7 @@ async function start() {
   app.use(cors(corsOptions));
   app.use(express.json());
 
-  app.use("/uploads", express.static("uploads"));
+  app.use(`${BASE_PATH}/uploads`, express.static("uploads"));
 
   // Logger toutes les requêtes HTTP (utile pour debug endpoints + payload).
   app.use((req, res, next) => {
@@ -68,17 +70,18 @@ async function start() {
     next();
   });
 
-  app.use("/auth", authRouter);
-  app.use("/admin", adminRouter);
-  app.use("/api/app", appRouter);
-  app.use("/api/swipe", swipeRouter);
-  app.use("/api/conversations", conversationsRouter);
-  app.use("/api/profile", profileRouter);
-  app.use("/api/report", reportRouter);
+  app.use(`${BASE_PATH}/auth`, authRouter);
+  app.use(`${BASE_PATH}/admin`, adminRouter);
+  app.use(`${BASE_PATH}/api/app`, appRouter);
+  app.use(`${BASE_PATH}/api/swipe`, swipeRouter);
+  app.use(`${BASE_PATH}/api/conversations`, conversationsRouter);
+  app.use(`${BASE_PATH}/api/profile`, profileRouter);
+  app.use(`${BASE_PATH}/api/report`, reportRouter);
 
   // Server HTTP + Socket.io
   const server = http.createServer(app);
   const io = new Server(server, {
+    path: BASE_PATH ? `${BASE_PATH}/socket.io` : "/socket.io",
     cors: {
       origin: allowedOrigins.length ? allowedOrigins : "*",
       credentials: true,

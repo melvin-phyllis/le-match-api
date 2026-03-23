@@ -34,7 +34,8 @@ router.get("/download", async (req, res) => {
     if (!latest || !fs.existsSync(filePath)) {
       return res.status(404).json({ message: "Application non disponible" });
     }
-    res.redirect(`/uploads/app/${LATEST_FILENAME}`);
+    const baseUrl = (process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, "");
+    res.redirect(`${baseUrl}/uploads/app/${LATEST_FILENAME}`);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
