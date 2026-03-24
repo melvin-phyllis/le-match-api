@@ -7,18 +7,31 @@ const AppVersion = require("../models/AppVersion");
 const APP_DIR = path.join(process.cwd(), "uploads", "app");
 const LATEST_FILENAME = "app-latest.apk";
 
+function latestApkPath() {
+  return path.join(APP_DIR, LATEST_FILENAME);
+}
+
+/** Fichier présent sur disque (dépôt manuel dans uploads/app/app-latest.apk possible). */
+function apkFileOnDisk() {
+  const p = latestApkPath();
+  if (!fs.existsSync(p)) return null;
+  return fs.statSync(p);
+}
+
 // GET /api/app/info — public
 router.get("/info", async (req, res) => {
   try {
     const latest = await AppVersion.findOne().sort({ createdAt: -1 }).lean();
-    if (!latest) {
+    const stat = apkFileOnDisk();
+    if (!stat) {
       return res.json({ hasApp: false });
     }
     const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const manualVersion = process.env.APP_MANUAL_VERSION || "local";
     res.json({
       hasApp: true,
-      version: latest.version,
-      uploadedAt: latest.createdAt,
+      version: latest?.version ?? manualVersion,
+      uploadedAt: latest?.createdAt ?? stat.mtime,
       downloadUrl: `${baseUrl}/uploads/app/${LATEST_FILENAME}`,
     });
   } catch (err) {
@@ -29,9 +42,8 @@ router.get("/info", async (req, res) => {
 // GET /api/app/download — redirection vers le fichier
 router.get("/download", async (req, res) => {
   try {
-    const latest = await AppVersion.findOne().sort({ createdAt: -1 });
-    const filePath = path.join(APP_DIR, LATEST_FILENAME);
-    if (!latest || !fs.existsSync(filePath)) {
+    const filePath = latestApkPath();
+    if (!fs.existsSync(filePath)) {
       return res.status(404).json({ message: "Application non disponible" });
     }
     const baseUrl = (process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, "");

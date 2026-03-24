@@ -395,13 +395,17 @@ router.get("/app", requireAdmin, async (req, res) => {
       .sort({ createdAt: -1 })
       .populate("uploadedBy", "name")
       .lean();
-    if (!latest) return res.json({ hasApp: false });
+    const manualPath = path.join(APP_DIR, LATEST_FILENAME);
+    const onDisk = fs.existsSync(manualPath);
+    if (!latest && !onDisk) return res.json({ hasApp: false });
+    const stat = onDisk ? fs.statSync(manualPath) : null;
+    const manualVersion = process.env.APP_MANUAL_VERSION || "local";
     res.json({
       hasApp: true,
-      version: latest.version,
-      filename: latest.filename,
-      uploadedAt: latest.createdAt,
-      uploadedBy: latest.uploadedBy?.name,
+      version: latest?.version ?? manualVersion,
+      filename: latest?.filename ?? LATEST_FILENAME,
+      uploadedAt: latest?.createdAt ?? stat?.mtime,
+      uploadedBy: latest?.uploadedBy?.name ?? (onDisk && !latest ? "(fichier manuel)" : undefined),
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
