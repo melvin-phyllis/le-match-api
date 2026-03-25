@@ -84,13 +84,21 @@ module.exports = function initSockets(io) {
     if (socket.userId) connectedUsers.set(String(socket.userId), socket.id);
     logger.info(`[Socket] users connectés: ${connectedUsers.size}`);
 
-    const icePayload = buildIceServersPayload();
-    if (icePayload.iceServers.length > 0) {
-      socket.emit("rtc:iceServers", icePayload);
-      logger.info(
-        `[RTC] rtc:iceServers → userId=${socket.userId} (${icePayload.iceServers.length} entrée(s))`,
-      );
+    /** ICE : émission au connect + sur demande client (évite la course où rtc:iceServers arrive avant les listeners Android). */
+    function emitIceServersToClient(sock) {
+      const icePayload = buildIceServersPayload();
+      if (icePayload.iceServers.length > 0) {
+        sock.emit("rtc:iceServers", icePayload);
+        logger.info(
+          `[RTC] rtc:iceServers → userId=${sock.userId} (${icePayload.iceServers.length} entrée(s))`,
+        );
+      }
     }
+
+    emitIceServersToClient(socket);
+    socket.on("rtc:requestIceServers", () => {
+      emitIceServersToClient(socket);
+    });
 
     // Notifier tous les autres users connectés que ce user vient d'arriver.
     // Utile pour relancer l'offre quand un peer arrive après le premier signaling.
