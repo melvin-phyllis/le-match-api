@@ -3,6 +3,27 @@ const Conversation = require("../models/Conversation");
 const { connectedUsers, waitingQueue, activeSessions, sessionLikes } = require("./state");
 const logger = require("../utils/logger");
 
+/** ICE (STUN/TURN) envoyé aux apps Android au connect — évite de recompiler l’APK pour ajouter un TURN. */
+function buildIceServersPayload() {
+  const raw = process.env.ICE_SERVERS_JSON;
+  if (!raw || !String(raw).trim()) {
+    return { iceServers: [] };
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return { iceServers: parsed };
+    }
+    if (parsed && Array.isArray(parsed.iceServers)) {
+      return { iceServers: parsed.iceServers };
+    }
+    return { iceServers: [] };
+  } catch (e) {
+    logger.warn(`[RTC] ICE_SERVERS_JSON invalide: ${e.message}`);
+    return { iceServers: [] };
+  }
+}
+
 /*
 FLUX DÉCOUVERTE — Matching FIFO (style Omegle) :
 
@@ -62,6 +83,14 @@ module.exports = function initSockets(io) {
     logger.info(`[Socket] CONNECT userId=${socket.userId} socketId=${socket.id}`);
     if (socket.userId) connectedUsers.set(String(socket.userId), socket.id);
     logger.info(`[Socket] users connectés: ${connectedUsers.size}`);
+
+    const icePayload = buildIceServersPayload();
+    if (icePayload.iceServers.length > 0) {
+      socket.emit("rtc:iceServers", icePayload);
+      logger.info(
+        `[RTC] rtc:iceServers → userId=${socket.userId} (${icePayload.iceServers.length} entrée(s))`,
+      );
+    }
 
     // Notifier tous les autres users connectés que ce user vient d'arriver.
     // Utile pour relancer l'offre quand un peer arrive après le premier signaling.
