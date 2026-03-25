@@ -55,7 +55,7 @@ backend/
 │   └── utils/
 │       ├── notifications.js # Push FCM
 │       └── compatibility.js # Score de compatibilité
-├── uploads/                # Fichiers uploadés (messages, app)
+├── uploads/                # messages/, audio/, app/ (APK manuel ou via admin)
 ├── .env.example
 ├── package.json
 └── README.md
@@ -69,7 +69,7 @@ backend/
 
 - Node.js 18+
 - MongoDB (local ou Atlas)
-- Compte Firebase (pour la connexion Google, optionnel)
+- Compte Google / [Firebase](https://console.firebase.google.com) (pour **connexion Google** et **notifications FCM**, recommandé)
 
 ### Étapes
 
@@ -118,7 +118,29 @@ Le serveur écoute par défaut sur le port **3000**.
 | `ADMIN_SEED_EMAIL` | Non | Email admin par défaut (sinon: guehiphilippe@ya-consulting.com) |
 | `ADMIN_SEED_PASSWORD` | Non | Mot de passe admin par défaut |
 
-\* Requis uniquement pour `/auth/google`. Sans Firebase, le backend démarre mais cette route retourne 503.
+\* Requis pour **`POST /auth/google`** et pour l’envoi des **notifications FCM** (`firebase-admin` + `admin.messaging()`). Sans ces variables, le serveur démarre quand même avec un avertissement ; la route Google renvoie **503** et les push ne partent pas.
+
+### Configurer Firebase Admin (compte de service)
+
+1. [Firebase Console](https://console.firebase.google.com) → **Paramètres du projet** (engrenage) → **Comptes de service**.  
+2. **Générer une nouvelle clé privée** → fichier JSON téléchargé.  
+3. Renseigner `.env` à partir du JSON :
+
+   | Clé `.env` | Champ dans le JSON |
+   |------------|-------------------|
+   | `FIREBASE_PROJECT_ID` | `project_id` |
+   | `FIREBASE_CLIENT_EMAIL` | `client_email` |
+   | `FIREBASE_PRIVATE_KEY` | `private_key` |
+
+4. **`FIREBASE_PRIVATE_KEY` dans `.env`** : gardez la clé sur **une seule ligne** entre guillemets, en remplaçant les vrais sauts de ligne par la séquence **`\n`** :
+
+   ```env
+   FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----\n"
+   ```
+
+   Sous Windows, évitez de copier-coller des guillemets « typographiques » ; utilisez des `"` ASCII.
+
+5. C’est le **même projet Firebase** que celui utilisé pour `google-services.json` sur Android (même `project_id`).
 
 ---
 
@@ -201,8 +223,6 @@ Toutes les routes admin exigent un JWT avec `isAdmin: true` (`Authorization: Bea
 | GET | `/admin/reports` | Liste des signalements (filter: status) |
 | PATCH | `/admin/reports/:id` | Mettre à jour le statut (En attente, Résolu, Ignoré) |
 | GET | `/admin/sessions` | Sessions vidéo actives |
-| GET | `/admin/app` | Infos sur l’APK actuel |
-| POST | `/admin/app/upload` | Upload APK (form-data: `apk`, `version`) |
 
 ---
 
@@ -292,3 +312,11 @@ npm run dev   # Nodemon (redémarrage auto)
 ```
 
 En mode `development`, CORS accepte toutes les origines pour faciliter les tests (localhost, IP privées, etc.).
+
+---
+
+## Liens utiles
+
+- [README du dépôt (installation complète + Firebase)](../README.md)  
+- [README Android](../android/README.md)  
+- [README Landing / backoffice](../landing-page/README.md)

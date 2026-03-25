@@ -1,38 +1,12 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const path = require("path");
-const fs = require("fs");
-const multer = require("multer");
 const router = express.Router();
 const User = require("../models/User");
 const Conversation = require("../models/Conversation");
 const Report = require("../models/Report");
-const AppVersion = require("../models/AppVersion");
 const requireAdmin = require("../middlewares/requireAdmin");
 const { activeSessions, connectedUsers } = require("../sockets/state");
-
-const APP_DIR = path.join(process.cwd(), "uploads", "app");
-const LATEST_FILENAME = "app-latest.apk";
-
-if (!fs.existsSync(APP_DIR)) {
-  fs.mkdirSync(APP_DIR, { recursive: true });
-}
-
-const appStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, APP_DIR),
-  filename: (req, file, cb) => cb(null, LATEST_FILENAME),
-});
-const uploadApp = multer({
-  storage: appStorage,
-  limits: { fileSize: 100 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (!file.originalname.toLowerCase().endsWith(".apk")) {
-      return cb(new Error("Seuls les fichiers .apk sont autorisés"));
-    }
-    cb(null, true);
-  },
-});
 
 const TODAY_START = new Date();
 TODAY_START.setHours(0, 0, 0, 0);
@@ -383,47 +357,6 @@ router.get("/sessions", requireAdmin, async (req, res) => {
       connectedUsersCount: connectedUsers.size,
       activeSessions: sessionsWithNames,
     });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// GET /admin/app
-router.get("/app", requireAdmin, async (req, res) => {
-  try {
-    const latest = await AppVersion.findOne()
-      .sort({ createdAt: -1 })
-      .populate("uploadedBy", "name")
-      .lean();
-    const manualPath = path.join(APP_DIR, LATEST_FILENAME);
-    const onDisk = fs.existsSync(manualPath);
-    if (!latest && !onDisk) return res.json({ hasApp: false });
-    const stat = onDisk ? fs.statSync(manualPath) : null;
-    const manualVersion = process.env.APP_MANUAL_VERSION || "local";
-    res.json({
-      hasApp: true,
-      version: latest?.version ?? manualVersion,
-      filename: latest?.filename ?? LATEST_FILENAME,
-      uploadedAt: latest?.createdAt ?? stat?.mtime,
-      uploadedBy: latest?.uploadedBy?.name ?? (onDisk && !latest ? "(fichier manuel)" : undefined),
-    });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// POST /admin/app/upload
-router.post("/app/upload", requireAdmin, uploadApp.single("apk"), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ message: "Aucun fichier reçu" });
-    const version = req.body.version || `1.0.${Date.now()}`;
-    await AppVersion.create({
-      version,
-      filename: req.file.originalname,
-      filePath: req.file.path,
-      uploadedBy: req.userId,
-    });
-    res.json({ success: true, version, message: "Application mise à jour" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
